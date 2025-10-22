@@ -8,9 +8,12 @@
 	restart button, and a main menu when you log in. It will play backround music, and play sounds to show coins
 	collected and lives lost.
 */
-
-#include <stm32f031x6.h>
+#define gridwidth 8
+#define gridheight 8
+#define rectangle 16
+#include "stm32f031x6.h"
 #include "display.h"
+
 void initClock(void);
 void initSysTick(void);
 void SysTick_Handler(void);
@@ -19,9 +22,22 @@ void setupIO();
 int isInside(uint16_t x1, uint16_t y1, uint16_t w, uint16_t h, uint16_t px, uint16_t py);
 void enablePullUp(GPIO_TypeDef *Port, uint32_t BitNumber);
 void pinMode(GPIO_TypeDef *Port, uint32_t BitNumber, uint32_t Mode);
+void initSerial(void);
 
 volatile uint32_t milliseconds;
 
+/*int _write(int file, char *ptr, int len)
+{
+	int i;
+	for (i = 0; i < len; i++)
+	{
+		// You need to implement UART transmission here
+		// This assumes you have UART initialization set up
+		while((USART2->ISR & USART_ISR_TXE) == 0);
+		USART2->TDR = ptr[i];
+	}
+	return len;
+}*/
 // starting images for deco (character)
 const uint16_t deco1[] =
 	{
@@ -1004,6 +1020,7 @@ const uint16_t myimage[] =
 		65535, 0, 0, 65535, 65535, 65535, 0, 65535, 65535, 0, 65535, 65535, 65535, 65535, 65535, 65535, 0, 0, 0, 65535, 0, 0, 65535, 65535, 65535, 0, 65535, 0, 0, 65535, 65535, 65535, 65535, 65535, 65535, 0, 0, 65535, 0, 0, 0, 0, 65535, 65535, 0, 0, 0, 0, 65535, 65535, 65535, 65535, 65535, 0, 0, 0, 65535, 0, 0, 0, 0, 65535, 0, 0, 0, 0, 0, 0, 0, 0, 65535, 0, 0, 0, 0, 65535, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65535, 65535, 65535, 0, 0, 0, 0, 0, 0, 65535, 65535, 65535, 65535, 65535, 0, 0, 0, 0, 0, 65535, 0, 65535, 0, 65535, 65535, 65535, 65535, 0, 0, 0, 65535, 0, 0, 0, 0, 0, 0, 0, 65535, 65535, 65535, 0, 65535, 0, 0, 65535, 0, 0, 0, 65535, 0, 0, 0, 0, 0, 0, 0, 65535, 0, 65535, 0, 65535, 65535, 65535, 65535, 0, 0, 0, 65535, 0, 0, 0, 0, 0, 0, 0, 65535, 65535, 65535, 0, 65535, 0, 0, 65535, 0, 0, 0, 65535, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65535, 65535, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65535, 65535, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65535, 65535, 65535, 0, 0, 0, 65535, 65535, 65535, 0, 0, 0, 0, 0, 65535, 65535, 0, 0, 0, 65535, 65535};
 int main()
 {
+	// 128x160
 	int hinverted = 0;
 	int vinverted = 0;
 	int toggle = 0;
@@ -1015,6 +1032,10 @@ int main()
 	int baty = 20;
 	int flipflop = 0;
 	int flipflopbat = 0;
+	int i;
+	int j;
+	int tempx = 0;
+	int tempy = 140;
 	uint16_t x = 50;
 	uint16_t y = 50;
 	uint16_t oldx = x;
@@ -1024,8 +1045,41 @@ int main()
 	setupIO();
 	putImage(50, 10, 19, 16, myimage, 0, 0);
 	putImage(20, 80, 12, 16, dg1, 0, 0);
+	// drawRectangle(20, 20, 40, 40, 3);
+	// fillRectangle(20, 20, 40, 40, 3);
+	int grid[gridwidth][gridheight] = {
+		{0, 0, 0, 1, 0, 0, 0, 0},
+		{0, 0, 1, 0, 1, 0, 0, 1},
+		{0, 0, 0, 0, 0, 1, 0, 1},
+		{1, 0, 1, 1, 1, 1, 0, 1},
+		{0, 0, 1, 1, 1, 1, 0, 1},
+		{1, 0, 0, 0, 1, 1, 0, 0},
+		{1, 0, 1, 0, 1, 1, 0, 0},
+		{1, 0, 0, 0, 1, 1, 0, 0},
+		{1, 0, 1, 0, 1, 1, 0, 1}};
+	for (i = 0; i < gridheight; i++) // generate the maze
+	{
+		for (j = 0; j < gridwidth; j++)
+		{
+			if (grid[i][j] == 1)
+			{
+				drawRectangle(tempx, tempy, 16, 16, 3);
+				fillRectangle(tempx, tempy, 16, 16, 3);
+			}
+			else if (grid[i][j] == 0)
+			{
+				// drawRectangle(0 + tempx, 0 + tempy, 16, 16,32);
+				// fillRectangle(0 + tempx, 0 + tempy, 16, 16, 32);
+			}
+
+			tempx = tempx + 16;
+		}
+		tempx = 0;
+		tempy = tempy - 16;
+	}
 	while (1)
 	{
+		/*
 		if (flipflopbat == 0)
 		{
 			if (batx == x)
@@ -1080,7 +1134,7 @@ int main()
 		{
 			flipflop = 0;
 		}
-
+			*/
 		putImage(ghostx, ghosty, 12, 16, Snake, 0, 0);
 		putImage(batx, baty, 12, 16, myimage, 0, 0);
 
